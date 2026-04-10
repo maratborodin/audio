@@ -1,1 +1,15 @@
 qwen2.5-7b-instruct-q4_k_m.gguf
+.DS_Store
+.env
+.idea
+.mypy_cache
+.pytest_cache
+__pycache__/
+mc
+output_data/
+output_audio/
+input_video/
+docs/build/
+venv/
+*.db
+*.json

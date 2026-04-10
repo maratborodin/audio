@@ -1,43 +1,84 @@
+from __future__ import annotations
+
+import os
+from typing import Any, IO
+
+import soundfile
 import torch
+from dotenv import load_dotenv
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-import soundfile
 
-TOKEN = ''
+load_dotenv()
+TOKEN: str | None = os.environ.get("TOKEN")
 
 
-def get_diarization(output_audio):
-    # output_audio = './output_audio/Рафаэль_Рише_покинул_＂Трактор＂_День_с_Алексеем_Шевченко_Bytpl2vSpNE.wav'
-    print('до загрузки модели')
-    pipeline = Pipeline.from_pretrained('pyannote/speaker-diarization-community-1', token=TOKEN)
-    print('после загрузки модели')
-    device = torch.device('cpu')
-    print('после создания ус-ва')
+def group_segments_by_speaker(
+    segments: list[dict[str, Any]],
+) -> dict[str, dict[str, list[tuple[float, float]]]]:
+    """Группирует сегменты диаризации по спикерам.
+
+    Преобразует список сегментов с полями 'speaker', 'start', 'end' в словарь,
+    где каждому спикеру соответствует список пар (start, end).
+
+    Args:
+        segments: Список dict с ключами 'speaker', 'start', 'end'.
+
+    Returns:
+        Словарь {speaker: {'segments': [(start, end), ...]}}.
+    """
+    speakers: dict[str, dict[str, list[tuple[float, float]]]] = {}
+    segment: dict[str, Any]
+    for segment in segments:
+        if segment["speaker"] not in speakers:
+            speakers[segment["speaker"]] = {"segments": []}
+        speakers[segment["speaker"]]["segments"].append((segment["start"], segment["end"]))
+    return speakers
+
+
+def get_diarization(
+    output_audio: str | IO[bytes],
+) -> dict[str, dict[str, list[tuple[float, float]]]]:
+    """Выполняет диаризацию спикеров по аудиофайлу.
+
+    Загружает pyannote speaker-diarization-community-1, читает WAV через soundfile,
+    передаёт waveform в пайплайн на CPU и группирует результат по спикерам через
+    group_segments_by_speaker.
+
+    Args:
+        output_audio: Путь к моно WAV-файлу (float32) или file-like объект (BytesIO).
+
+    Returns:
+        Словарь {speaker: {'segments': [(start, end), ...]}} в формате
+        group_segments_by_speaker.
+
+    Raises:
+        ValueError: Если пайплайн диаризации не был загружен.
+    """
+    pipeline_or_none: Pipeline | None = Pipeline.from_pretrained(
+        "pyannote/speaker-diarization-community-1", token=TOKEN
+    )
+    if pipeline_or_none is None:
+        raise ValueError("Failed to load diarization pipeline")
+    pipeline: Pipeline = pipeline_or_none
+    device: torch.device = torch.device("cpu")
     pipeline.to(device)
-    print('после привязки ус-ва')
-    #output = pipeline(output_audio, num_speakers=2, exclusive=True)
-    wave_form_np, sample_rate = soundfile.read(output_audio, dtype='float32')
-    print('считали аудио файл')
-    wave_form = torch.from_numpy(wave_form_np).unsqueeze(0)
-    print('преобразовали аудио данные')
-    audio_dict = {'waveform': wave_form, 'sample_rate': sample_rate}
-    print(wave_form.shape)
+    wave_form_np: Any
+    sample_rate: Any
+    wave_form_np, sample_rate = soundfile.read(output_audio, dtype="float32")
+    wave_form: torch.Tensor = torch.from_numpy(wave_form_np).unsqueeze(0)
+    audio_dict: dict[str, Any] = {"waveform": wave_form, "sample_rate": sample_rate}
+    hook: ProgressHook
     with ProgressHook() as hook:
-        output = pipeline(audio_dict, hook=hook)
-    print('выполнили диаризацию')
-    segments = []
+        output: Any = pipeline(audio_dict, hook=hook)
+    segments_list: list[dict[str, Any]] = []
 
     for turn, _, speaker in output.speaker_diarization.itertracks(yield_label=True):
-        segments.append({'speaker': str(speaker), 'start': float(turn.start), 'end': float(turn.end)})
+        segments_list.append(
+            {"speaker": str(speaker), "start": float(turn.start), "end": float(turn.end)}
+        )
 
-    #print(segments)
-    speakers = {}
-    for segment in segments:
-        if segment['speaker'] not in speakers:
-            speakers[segment['speaker']] = {'segments': []}
-        speakers[segment['speaker']]['segments'].append((segment['start'], segment['end']))
-
-    return speakers
+    return group_segments_by_speaker(segments_list)
 
 # print (get_diarization('./output_audio/Рафаэль_Рише_покинул_＂Трактор＂_День_с_Алексеем_Шевченко_Bytpl2vSpNE.wav'))
 

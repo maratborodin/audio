@@ -1,0 +1,14 @@
+[run]
+source = .
+omit =
+    tests/*
+    */site-packages/*
+    .venv/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+
+fail_under = 80

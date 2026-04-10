@@ -1,0 +1,28 @@
+# Проект Compose: имя `audio` → том `audio_task_data`, сеть `audio_default`.
+name: audio
+
+volumes:
+  task_data:
+
+services:
+  api:
+    build: .
+    image: audio-api:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - task_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DATABASE_URL: sqlite:////data/tasks.db
+      DATA_PATH: /data/output
+      USE_DOCKER_WORKERS: "1"
+      WORKER_IMAGE: audio-api:latest
+      TASK_VOLUME_NAME: audio_task_data
+      DOCKER_NETWORK: audio_default
+      TOKEN: ${TOKEN:-}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
